@@ -17,6 +17,7 @@ import {
 
 const STORAGE_KEY = "give-hub-life-os-state-v1";
 const SUPABASE_ROW_ID = "evan-main-hub";
+const GIVE_HUB_API_URL = import.meta.env.VITE_GIVE_HUB_API_URL || "http://localhost:4000";
 
 const pad = (n) => String(n).padStart(2, "0");
 const todayISO = () => {
@@ -479,6 +480,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("Local preview");
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [newPerson, setNewPerson] = useState({ name: "", type: "Prospect", stage: "Reach Out", currentTension: "Other", nextStep: "" });
+  const [highLevelSyncStatus, setHighLevelSyncStatus] = useState({});
 
   const log = normalizeLog(state.logs?.[date], date);
   const settings = state.settings || normalizeState().settings;
@@ -510,6 +512,45 @@ export default function App() {
     ...s,
     prospects: (s.prospects || []).map((p) => p.id === id ? normalizePerson({ ...p, ...updates, updated: todayISO() }) : p),
   }));
+
+  const syncPersonToHighLevel = async (person) => {
+    if (!person?.id) return;
+
+    setHighLevelSyncStatus((s) => ({
+      ...s,
+      [person.id]: { state: "syncing", message: "Syncing to HighLevel…" },
+    }));
+
+    try {
+      const response = await fetch(`${GIVE_HUB_API_URL}/people/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "HighLevel sync failed.");
+      }
+
+      updatePerson(person.id, {
+        highLevelUrl: result.highLevelUrl || "",
+        highLevelContactId: result.contactId || "",
+        lastHighLevelSync: new Date().toISOString(),
+      });
+
+      setHighLevelSyncStatus((s) => ({
+        ...s,
+        [person.id]: { state: "synced", message: "Synced to HighLevel" },
+      }));
+    } catch (err) {
+      setHighLevelSyncStatus((s) => ({
+        ...s,
+        [person.id]: { state: "error", message: err.message },
+      }));
+    }
+  };
   const deletePerson = (id) => { setState((s) => ({ ...s, prospects: (s.prospects || []).filter((p) => p.id !== id) })); setSelectedPersonId(null); };
 
   useEffect(() => {
@@ -592,10 +633,10 @@ export default function App() {
         {tab === "wellness" && <WellnessPage {...{ date, setDate, log, updateLogSection, allLogs }} />}
         {tab === "wealth" && <WealthPage {...{ date, setDate, log, stats, targets, setLog, updateLogSection, allLogs }} />}
         {tab === "magic" && <MagicPage {...{ log, updateLogSection, stats, tricks, updateSettings, magicCoach }} />}
-        {tab === "people" && <PeoplePage {...{ people: relationshipList, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date }} />}
+        {tab === "people" && <PeoplePage {...{ people: relationshipList, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel }} />}
         {tab === "settings" && <SettingsPage {...{ state, exportData, importData, settings, targets, goals, affirmations, manifestationPrompts, tricks, updateSettings }} />}
       </main>
-      {selectedPerson && <PeopleDrawer person={{ ...selectedPerson, ...relationshipCoaching(selectedPerson, date) }} settings={settings} updatePerson={updatePerson} deletePerson={deletePerson} onClose={() => setSelectedPersonId(null)} />}
+      {selectedPerson && <PeopleDrawer person={{ ...selectedPerson, ...relationshipCoaching(selectedPerson, date) }} settings={settings} updatePerson={updatePerson} deletePerson={deletePerson} onClose={() => setSelectedPersonId(null)} highLevelSyncStatus={highLevelSyncStatus[selectedPerson.id]} syncPersonToHighLevel={syncPersonToHighLevel} />}
     </div>
   );
 }
@@ -725,7 +766,7 @@ function MagicPage({ log, updateLogSection, stats, tricks, updateSettings, magic
     <Card eyebrow="Coach Evan" title="Magic Training Coach"><div className={magicCoach?.days >= 7 ? "coach-alert" : "coach-soft"}><span className="coach-area">Magic</span><strong>{magicCoach?.nextTrick ? `Next: ${magicCoach.nextTrick.name}` : "Next focused practice"}</strong><span>{magicCoach?.message}</span><small>{magicCoach?.last ? `Last practice: ${compactDate(magicCoach.last)}` : "No logged practice yet"}</small></div><div className="coach-actions"><button className="btn" onClick={() => magicCoach?.nextTrick && set({ trick: magicCoach.nextTrick.name, practiced: true, minutes: m.minutes || 10 })}>Load suggested trick</button><button className="btn primary" onClick={() => set({ practiced: true, minutes: m.minutes || 10 })}>Mark practice started</button></div></Card>
     <Card eyebrow="Repertoire" title="Performance Readiness"><div className="mini-list"><div><span>Active repertoire</span><strong>{tricks.length}/{stats.targetRepertoireSize}</strong></div><div><span>Performance ready</span><strong>{stats.performanceReady}</strong></div><div><span>Practice days this week</span><strong>{stats.magicPracticeDays}</strong></div></div>{selected && <div className="manager-card"><strong>{selected.name}</strong><label>Status<select className="input" value={selected.status} onChange={(e) => updateTrick(selected.id, { status: e.target.value, performanceReady: e.target.value === "Performance Ready" })}>{MAGIC_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>}</Card></section></div>;
 }
-function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date }) {
+function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel }) {
   const [query, setQuery] = useState(""); const [stage, setStage] = useState("All"); const [type, setType] = useState("All"); const [status, setStatus] = useState("All"); const [focus, setFocus] = useState("All");
   const filtered = people.filter((p) => {
     const hay = `${p.name} ${p.type} ${(p.relationshipTypes || []).join(" ")} ${p.stage} ${p.currentMission} ${p.currentTension} ${p.nextStep} ${p.tags} ${p.notes} ${p.coachObservation} ${p.goalConnections}`.toLowerCase();
@@ -746,9 +787,11 @@ function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, 
     <section className="people-layout"><Card eyebrow="Relationship CRM" title="Find the next right person"><div className="search-box"><Search size={16}/><input placeholder="Search people, tags, notes, missions, goals…" value={query} onChange={(e) => setQuery(e.target.value)} /></div><div className="filter-grid relationship-filters"><select className="input" value={stage} onChange={(e) => setStage(e.target.value)}><option>All</option>{SERVICE_STAGES.map((x) => <option key={x}>{x}</option>)}</select><select className="input" value={type} onChange={(e) => setType(e.target.value)}><option>All</option>{[...new Set([...PEOPLE_TYPES, ...RELATIONSHIP_TYPES])].map((x) => <option key={x}>{x}</option>)}</select><select className="input" value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{OPPORTUNITY_STATUSES.map((x) => <option key={x}>{x}</option>)}</select><select className="input" value={focus} onChange={(e) => setFocus(e.target.value)}><option>All</option><option>Needs Attention</option><option>Prosperity</option><option>Wealth</option><option>Wellness</option><option>Magic</option><option>Happiness</option></select></div><div className="people-table relationship-table">{filtered.map((p) => <button className={selectedPersonId === p.id ? "person-row relationship-row active" : "person-row relationship-row"} key={p.id} onClick={() => setSelectedPersonId(p.id)}><div><strong>{p.name}</strong><small>{(p.relationshipTypes || [p.type]).slice(0,3).join(" • ")}</small></div><span>{p.stage}</span><div className="score-stack"><b>{p.relationshipHealth}%</b><small>health</small></div><div className="score-stack"><b>{p.opportunityScore}%</b><small>opportunity</small></div><small>{p.nextStep || p.currentMission}</small></button>)}</div></Card><Card eyebrow="Coach Evan" title="Relationship Coaching"><div className="stack">{people.slice(0, 5).map((p) => <button className="relationship-coach-card" key={p.id} onClick={() => setSelectedPersonId(p.id)}><span>{p.daysSinceContact === 999 ? "No contact date" : `${p.daysSinceContact} days`}</span><strong>{p.name}</strong><small>{p.starter}</small></button>)}</div></Card></section>
   </div>;
 }
-function PeopleDrawer({ person, settings, updatePerson, deletePerson, onClose }) {
+function PeopleDrawer({ person, settings, updatePerson, deletePerson, onClose, highLevelSyncStatus, syncPersonToHighLevel }) {
   const tensions = settings.hlTensions || CURRENT_TENSIONS;
   const set = (updates) => updatePerson(person.id, updates);
+  const syncState = highLevelSyncStatus?.state || (person.highLevelUrl ? "synced" : "idle");
+  const syncMessage = highLevelSyncStatus?.message || (person.highLevelUrl ? "Connected to HighLevel" : "Not synced yet");
   const toggleRelationshipType = (type) => {
     const current = toList(person.relationshipTypes);
     const next = current.includes(type) ? current.filter((x) => x !== type) : [...current, type];
@@ -762,11 +805,23 @@ function PeopleDrawer({ person, settings, updatePerson, deletePerson, onClose })
   const deleteTimeline = (id) => set({ timeline: (person.timeline || []).filter((item) => item.id !== id) });
   return <aside className="drawer-backdrop"><section className="drawer relationship-drawer"><div className="drawer-header"><div><p className="eyebrow">Relationship Dossier</p><h2>{person.name}</h2><div className="drawer-score-row"><span>{person.relationshipHealth}% health</span><span>{person.trustScore}% trust</span><span>{person.opportunityScore}% opportunity</span></div></div><button className="icon-btn" onClick={onClose}><X size={18}/></button></div>
     <Card eyebrow="Coach Evan" title="Next Best Action"><div className={person.daysSinceContact >= 7 || person.daysSinceContact === 999 ? "coach-alert" : "coach-soft"}><span className="coach-area">Relationship</span><strong>{person.nextAction}</strong><span>{person.reason}</span><small>{person.starter}</small></div></Card>
-    <div className="stack"><label>Name<input className="input" value={person.name} onChange={(e) => set({ name: e.target.value })} /></label><div className="form-grid"><label>Type<select className="input" value={person.type} onChange={(e) => set({ type: e.target.value })}>{PEOPLE_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Opportunity Status<select className="input" value={person.opportunityStatus} onChange={(e) => set({ opportunityStatus: e.target.value })}>{OPPORTUNITY_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>
+    <div className="stack">
+      <div className="coach-soft">
+        <strong>{syncMessage}</strong>
+        {person.lastHighLevelSync && <small>Last Sync: {new Date(person.lastHighLevelSync).toLocaleString()}</small>}
+      </div>
+      <label>Name<input className="input" value={person.name} onChange={(e) => set({ name: e.target.value })} /></label><div className="form-grid"><label>Type<select className="input" value={person.type} onChange={(e) => set({ type: e.target.value })}>{PEOPLE_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Opportunity Status<select className="input" value={person.opportunityStatus} onChange={(e) => set({ opportunityStatus: e.target.value })}>{OPPORTUNITY_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>
     <label>Relationship Categories</label><div className="relationship-chip-grid">{RELATIONSHIP_TYPES.map((type) => <button type="button" className={toList(person.relationshipTypes).includes(type) ? "chip active" : "chip"} key={type} onClick={() => toggleRelationshipType(type)}>{type}</button>)}</div>
     <label>Stage<select className="input" value={person.stage} onChange={(e) => set({ stage: e.target.value, currentMission: stageMission(e.target.value) })}>{SERVICE_STAGES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Current Mission<input className="input" value={person.currentMission} onChange={(e) => set({ currentMission: e.target.value })} /></label><label>Current Tension<select className="input" value={person.currentTension} onChange={(e) => set({ currentTension: e.target.value })}>{tensions.map((x) => <option key={x}>{x}</option>)}</select></label><label>Last Contact<input className="input" type="date" value={person.lastContact || ""} onChange={(e) => set({ lastContact: e.target.value })} /></label><label>Next Step<input className="input" value={person.nextStep} onChange={(e) => set({ nextStep: e.target.value })} /></label><label>Goal Connections<input className="input" value={person.goalConnections} onChange={(e) => set({ goalConnections: e.target.value })} placeholder="Prosperity, Wealth, Magic…" /></label><label>Tags<input className="input" value={person.tags} onChange={(e) => set({ tags: e.target.value })} /></label><label>HighLevel URL<input className="input" value={person.highLevelUrl} onChange={(e) => set({ highLevelUrl: e.target.value })} /></label><TextArea label="Coach Observation" value={person.coachObservation} onChange={(v) => set({ coachObservation: v })} /><TextArea label="Trust Notes" value={person.trustNotes} onChange={(v) => set({ trustNotes: v })} /><TextArea label="Notes" value={person.notes} onChange={(v) => set({ notes: v })} />
     <Card eyebrow="Timeline" title="Relationship History" action={<button className="btn" onClick={addTimeline}>Add note</button>}><div className="timeline-list">{(person.timeline || []).length === 0 && <Empty text="No timeline notes yet. Add the moments that matter."/>}{(person.timeline || []).map((item) => <div className="timeline-item" key={item.id}><input className="input" type="date" value={item.date} onChange={(e) => updateTimeline(item.id, { date: e.target.value })}/><input className="input" value={item.text} onChange={(e) => updateTimeline(item.id, { text: e.target.value })}/><button className="small-danger" onClick={() => deleteTimeline(item.id)}>Delete</button></div>)}</div></Card>
-    <div className="drawer-actions"><a className={`btn ${person.highLevelUrl ? "primary" : "disabled"}`} href={person.highLevelUrl || undefined} target="_blank" rel="noreferrer"><ExternalLink size={16}/> Open in HighLevel</a><button className="btn danger" onClick={() => deletePerson(person.id)}><Trash2 size={16}/> Delete</button></div></div></section></aside>;
+    <div className="drawer-actions">
+      <a className={`btn ${person.highLevelUrl ? "primary" : "disabled"}`} href={person.highLevelUrl || undefined} target="_blank" rel="noreferrer"><ExternalLink size={16}/> Open in HighLevel</a>
+      <button className="btn" disabled={syncState === "syncing"} onClick={() => syncPersonToHighLevel(person)}>
+        {syncState === "syncing" ? "Syncing…" : "Sync HighLevel"}
+      </button>
+      <button className="btn danger" onClick={() => deletePerson(person.id)}><Trash2 size={16}/> Delete</button>
+    </div>
+    </div></section></aside>;
 }
 function SettingsPage({ state, exportData, importData, settings, targets, goals, affirmations, manifestationPrompts, tricks, updateSettings }) {
   const [newAff, setNewAff] = useState(""); const [newPrompt, setNewPrompt] = useState(""); const [newTension, setNewTension] = useState(""); const [newGoal, setNewGoal] = useState({ name: "", statement: "", status: "Active", nextAction: "" }); const [newTrick, setNewTrick] = useState("");
