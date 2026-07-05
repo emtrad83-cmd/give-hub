@@ -17,7 +17,7 @@ import {
 
 const STORAGE_KEY = "give-hub-life-os-state-v1";
 const SUPABASE_ROW_ID = "evan-main-hub";
-const GIVE_HUB_API_URL = import.meta.env.VITE_GIVE_HUB_API_URL || "http://localhost:4000";
+const GIVE_HUB_API_URL = import.meta.env.VITE_GIVE_HUB_API_URL || (import.meta.env.PROD ? "https://give-hub-api.onrender.com" : "http://localhost:4000");
 
 const pad = (n) => String(n).padStart(2, "0");
 const todayISO = () => {
