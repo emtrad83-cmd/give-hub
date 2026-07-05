@@ -668,38 +668,38 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState("loading");
 
-  useEffect(() => {
-    let mounted = true;
+    useEffect(() => {
+      let mounted = true;
 
-    async function loadCalendar() {
-      try {
-        setCalendarStatus("loading");
-        const response = await fetch(`${GIVE_HUB_API_URL}/calendar/today`);
-        const result = await response.json();
+      async function loadCalendar() {
+        try {
+          setCalendarStatus("loading");
+          const response = await fetch(`${GIVE_HUB_API_URL}/calendar/day?date=${date}`);
+          const result = await response.json();
 
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || "Calendar sync failed.");
-        }
+          if (!response.ok || !result.success) {
+            throw new Error(result.error || "Calendar sync failed.");
+          }
 
-        if (mounted) {
-          setGoogleCalendarEvents(result.events || []);
-          setCalendarStatus("synced");
-        }
-      } catch (err) {
-        console.error("Calendar sync failed:", err);
-        if (mounted) {
-          setGoogleCalendarEvents([]);
-          setCalendarStatus("error");
+          if (mounted) {
+            setGoogleCalendarEvents(result.events || []);
+            setCalendarStatus("synced");
+          }
+        } catch (err) {
+          console.error("Calendar sync failed:", err);
+          if (mounted) {
+            setGoogleCalendarEvents([]);
+            setCalendarStatus("error");
+          }
         }
       }
-    }
 
-    loadCalendar();
+      loadCalendar();
 
-    return () => {
-      mounted = false;
-    };
-  }, [date]);
+      return () => {
+        mounted = false;
+      };
+    }, [date]);
 
   const combinedCalendar = [
     ...googleCalendarEvents.map((event) => ({
@@ -757,7 +757,7 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
       <Card eyebrow="Quick Capture" title="Park the thought"><textarea value={log.quickCapture || ""} onChange={(e) => updateLogSection("quickCapture", { quickCapture: e.target.value })} placeholder="Capture a thought, task, insight, or follow-up without leaving Home." /></Card>
       <Card eyebrow="Calendar" title="Today’s Calendar" action={<button className="btn" onClick={addCalendar}><Plus size={16}/> Add</button>}>
         <div className="calendar-list">
-          {calendarStatus === "loading" && <Empty text="Loading today’s Google Calendar events…" />}
+          {calendarStatus === "loading" && <Empty text={`Loading Google Calendar events for ${prettyDate(date, { weekday: undefined })}…`} />}
           {calendarStatus === "error" && <Empty text="Google Calendar could not load. You can still add manual focus blocks here." />}
           {calendarStatus !== "loading" && combinedCalendar.length ? combinedCalendar.map((item) => (
             item.source === "google" ?
@@ -773,7 +773,7 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
                 <button className="small-danger" onClick={() => deleteCalendar(item.id)}>Delete</button>
               </div>
           )) : null}
-          {calendarStatus !== "loading" && !combinedCalendar.length && <Empty text="No calendar events today. Add a focus block if you want to structure the day." />}
+          {calendarStatus !== "loading" && !combinedCalendar.length && <Empty text="No calendar events for this date. Add a focus block if you want to structure the day." />}
         </div>
       </Card>
       <Card eyebrow="Pipeline" title="People Snapshot"><div className="mini-list">{["Reach Out", "Share Sample", "GIVER IBO Candidate", "Active GIVER"].map((s) => <div key={s}><span>{s}</span><strong>{pipelineCounts[s] || 0}</strong></div>)}</div></Card>
