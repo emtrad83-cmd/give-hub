@@ -665,6 +665,53 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
   const coach = coachMessage(momentum, stats, missions, log, targets, priorityGoal, relationshipCoach, magicCoach);
   const perfectDay = perfectDayItems({ coachInsights, log, stats, targets, relationshipCoach, magicCoach });
   const calendar = log.calendar || [];
+  const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
+  const [calendarStatus, setCalendarStatus] = useState("loading");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadCalendar() {
+      try {
+        setCalendarStatus("loading");
+        const response = await fetch(`${GIVE_HUB_API_URL}/calendar/today`);
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Calendar sync failed.");
+        }
+
+        if (mounted) {
+          setGoogleCalendarEvents(result.events || []);
+          setCalendarStatus("synced");
+        }
+      } catch (err) {
+        console.error("Calendar sync failed:", err);
+        if (mounted) {
+          setGoogleCalendarEvents([]);
+          setCalendarStatus("error");
+        }
+      }
+    }
+
+    loadCalendar();
+
+    return () => {
+      mounted = false;
+    };
+  }, [date]);
+
+  const combinedCalendar = [
+    ...googleCalendarEvents.map((event) => ({
+      id: event.id,
+      time: event.start ? new Date(event.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "",
+      title: event.title || "Untitled event",
+      source: "google",
+      htmlLink: event.htmlLink || "",
+    })),
+    ...calendar.map((event) => ({ ...event, source: "manual" })),
+  ];
+
   const addCalendar = () => updateLogSection("calendar", { calendar: [...calendar, { id: uid(), time: "", title: "", type: "Mission" }] });
   const updateCalendar = (id, updates) => updateLogSection("calendar", { calendar: calendar.map((e) => e.id === id ? { ...e, ...updates } : e) });
   const deleteCalendar = (id) => updateLogSection("calendar", { calendar: calendar.filter((e) => e.id !== id) });
@@ -709,7 +756,25 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
     <section className="three-col">
       <Card eyebrow="Quick Capture" title="Park the thought"><textarea value={log.quickCapture || ""} onChange={(e) => updateLogSection("quickCapture", { quickCapture: e.target.value })} placeholder="Capture a thought, task, insight, or follow-up without leaving Home." /></Card>
       <Card eyebrow="Calendar" title="Today’s Calendar" action={<button className="btn" onClick={addCalendar}><Plus size={16}/> Add</button>}>
-        <div className="calendar-list">{calendar.length ? calendar.map((item) => <div className="calendar-row" key={item.id}><input className="input" type="time" value={item.time || ""} onChange={(e) => updateCalendar(item.id, { time: e.target.value })}/><input className="input" placeholder="Appointment or focus block" value={item.title || ""} onChange={(e) => updateCalendar(item.id, { title: e.target.value })}/><button className="small-danger" onClick={() => deleteCalendar(item.id)}>Delete</button></div>) : <Empty text="Add today’s appointments or focus blocks here. Calendar sync comes later." />}</div>
+        <div className="calendar-list">
+          {calendarStatus === "loading" && <Empty text="Loading today’s Google Calendar events…" />}
+          {calendarStatus === "error" && <Empty text="Google Calendar could not load. You can still add manual focus blocks here." />}
+          {calendarStatus !== "loading" && combinedCalendar.length ? combinedCalendar.map((item) => (
+            item.source === "google" ?
+              <div className="calendar-row" key={`google-${item.id}`}>
+                <input className="input" value={item.time || ""} readOnly />
+                <input className="input" value={item.title || "Untitled event"} readOnly />
+                {item.htmlLink ? <a className="btn" href={item.htmlLink} target="_blank" rel="noreferrer">Open</a> : <span />}
+              </div>
+              :
+              <div className="calendar-row" key={item.id}>
+                <input className="input" type="time" value={item.time || ""} onChange={(e) => updateCalendar(item.id, { time: e.target.value })}/>
+                <input className="input" placeholder="Appointment or focus block" value={item.title || ""} onChange={(e) => updateCalendar(item.id, { title: e.target.value })}/>
+                <button className="small-danger" onClick={() => deleteCalendar(item.id)}>Delete</button>
+              </div>
+          )) : null}
+          {calendarStatus !== "loading" && !combinedCalendar.length && <Empty text="No calendar events today. Add a focus block if you want to structure the day." />}
+        </div>
       </Card>
       <Card eyebrow="Pipeline" title="People Snapshot"><div className="mini-list">{["Reach Out", "Share Sample", "GIVER IBO Candidate", "Active GIVER"].map((s) => <div key={s}><span>{s}</span><strong>{pipelineCounts[s] || 0}</strong></div>)}</div></Card>
     </section>
