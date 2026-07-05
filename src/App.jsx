@@ -761,9 +761,40 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
           {calendarStatus === "error" && <Empty text="Google Calendar could not load. You can still add manual focus blocks here." />}
           {calendarStatus !== "loading" && combinedCalendar.length ? combinedCalendar.map((item) => (
             item.source === "google" ?
-              <div className="calendar-row" key={`google-${item.id}`}>
-                <input className="input" value={item.time || ""} readOnly />
-                <input className="input" value={item.title || "Untitled event"} readOnly />
+              <div
+                className="calendar-row"
+                key={`google-${item.id}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "82px 1fr auto",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#0b1f4d",
+                    whiteSpace: "nowrap",
+                    fontSize: "0.92rem",
+                  }}
+                >
+                  {item.time || "All day"}
+                </div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#081633",
+                    lineHeight: 1.25,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "normal",
+                  }}
+                  title={item.title || "Untitled event"}
+                >
+                  {item.title || "Untitled event"}
+                </div>
                 {item.htmlLink ? <a className="btn" href={item.htmlLink} target="_blank" rel="noreferrer">Open</a> : <span />}
               </div>
               :
