@@ -661,6 +661,86 @@ function computeStats(allLogs, date, log, targets, tricks) {
   };
 }
 
+function buildExecutiveBrief({ date, momentum, log, targets, pipelineCounts, priorityGoal, coachInsights, relationshipCoach, magicCoach, calendarEvents }) {
+  const wealth = log?.wealth || {};
+  const wellness = log?.wellness || {};
+  const magic = log?.magic || {};
+  const calendar = calendarEvents || [];
+
+  const reachOutTarget = Number(targets?.dailyReachOuts || 5);
+  const sampleTarget = Number(targets?.dailySamples || 3);
+  const sixWTarget = Number(targets?.dailySixW || 1);
+
+  const reachOuts = Number(wealth.reachOutsCount || 0);
+  const samples = Number(wealth.samples || 0);
+  const sixW = Number(wealth.sixW || 0);
+
+  const gaps = [];
+  if (reachOuts < reachOutTarget) gaps.push(`${reachOutTarget - reachOuts} reach out${reachOutTarget - reachOuts === 1 ? "" : "s"}`);
+  if (samples < sampleTarget) gaps.push(`${sampleTarget - samples} sample${sampleTarget - samples === 1 ? "" : "s"}`);
+  if (sixW < sixWTarget) gaps.push(`${sixWTarget - sixW} 6-W conversation${sixWTarget - sixW === 1 ? "" : "s"}`);
+
+  const googleEvents = calendar.filter((event) => event.source === "google");
+  const nextEvent = googleEvents[0] || calendar[0] || null;
+  const momentumScore = Number(momentum?.percent || 0);
+
+  const topActions = [];
+
+  if (relationshipCoach?.name) {
+    topActions.push({
+      label: `Move ${relationshipCoach.name} forward`,
+      reason: relationshipCoach.reason || relationshipCoach.nextStep || "Relationship momentum is ready for a next step.",
+    });
+  }
+
+  if (gaps.length) {
+    topActions.push({
+      label: `Protect the GU ratios: ${gaps.slice(0, 2).join(" and ")}`,
+      reason: "These are the actions most directly tied to daily business momentum.",
+    });
+  }
+
+  if (priorityGoal?.name) {
+    topActions.push({
+      label: `Advance ${priorityGoal.name}`,
+      reason: priorityGoal.nextAction || "This is the highest-priority goal needing movement.",
+    });
+  }
+
+  if (!wellness.workoutStatus) {
+    topActions.push({
+      label: "Complete a wellness action",
+      reason: "Energy and discipline support every other area of the day.",
+    });
+  }
+
+  if (!magic.practiced && !magic.trick && !magic.notes) {
+    topActions.push({
+      label: "Practice magic for 10 minutes",
+      reason: magicCoach?.message || "Small reps keep the performance goal alive.",
+    });
+  }
+
+  const headline = momentumScore >= 80
+    ? "Strong momentum today. Protect it with focused execution."
+    : momentumScore >= 55
+      ? "Useful momentum today. Choose the action that moves the needle."
+      : "Today needs a simple win. Start with one action you can complete quickly.";
+
+  const firstInsight = coachInsights?.[0];
+
+  return {
+    headline,
+    momentumScore,
+    nextEvent,
+    topActions: topActions.slice(0, 3),
+    gaps,
+    calendarCount: googleEvents.length,
+    pipelineSnapshot: pipelineCounts || {},
+    insight: firstInsight?.body || firstInsight?.title || "Review the day, choose the highest-leverage action, and ship it.",
+  };
+}
+
 function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
   const coach = coachMessage(momentum, stats, missions, log, targets, priorityGoal, relationshipCoach, magicCoach);
   const perfectDay = perfectDayItems({ coachInsights, log, stats, targets, relationshipCoach, magicCoach });
@@ -712,12 +792,68 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
     ...calendar.map((event) => ({ ...event, source: "manual" })),
   ];
 
+  const executiveBrief = buildExecutiveBrief({
+    date,
+    momentum,
+    log,
+    targets,
+    pipelineCounts,
+    priorityGoal,
+    coachInsights,
+    relationshipCoach,
+    magicCoach,
+    calendarEvents: combinedCalendar,
+  });
+
   const addCalendar = () => updateLogSection("calendar", { calendar: [...calendar, { id: uid(), time: "", title: "", type: "Mission" }] });
   const updateCalendar = (id, updates) => updateLogSection("calendar", { calendar: calendar.map((e) => e.id === id ? { ...e, ...updates } : e) });
   const deleteCalendar = (id) => updateLogSection("calendar", { calendar: calendar.filter((e) => e.id !== id) });
   const openPerson = (id) => { setSelectedPersonId(id); setTab("people"); };
   return <div className="page-grid">
     <DateBar date={date} setDate={setDate} />
+    <Card eyebrow="Coach Evan 2.0" title="Executive Brief">
+      <div className="executive-brief">
+        <div className="brief-hero">
+          <div>
+            <span className="brief-kicker">{prettyDate(date)}</span>
+            <h2>{executiveBrief.headline}</h2>
+            <p>{executiveBrief.insight}</p>
+          </div>
+          <div className="brief-score">
+            <strong>{executiveBrief.momentumScore}</strong>
+            <span>Momentum</span>
+          </div>
+        </div>
+
+        <div className="brief-grid">
+          <div className="brief-panel">
+            <span>Calendar</span>
+            <strong>{executiveBrief.nextEvent ? `${executiveBrief.nextEvent.time || "Today"} · ${executiveBrief.nextEvent.title}` : "No scheduled events found"}</strong>
+            <small>{executiveBrief.calendarCount} Google Calendar event{executiveBrief.calendarCount === 1 ? "" : "s"} on this date</small>
+          </div>
+          <div className="brief-panel">
+            <span>GU Ratios</span>
+            <strong>{executiveBrief.gaps.length ? executiveBrief.gaps.slice(0, 2).join(" · ") : "Ratios are on track"}</strong>
+            <small>Reach Outs, Samples, and 6-W conversations</small>
+          </div>
+          <div className="brief-panel">
+            <span>Priority Goal</span>
+            <strong>{priorityGoal?.name || "No priority goal selected"}</strong>
+            <small>{priorityGoal?.nextAction || "Choose one goal action to move forward today."}</small>
+          </div>
+        </div>
+
+        <div className="brief-actions">
+          <span>Top 3 Actions</span>
+          {executiveBrief.topActions.length ? executiveBrief.topActions.map((action, index) => (
+            <div className="brief-action" key={`${action.label}-${index}`}>
+              <strong>{index + 1}. {action.label}</strong>
+              <small>{action.reason}</small>
+            </div>
+          )) : <Empty text="Coach Evan needs more data for today. Log one action or update one relationship to generate priorities." />}
+        </div>
+      </div>
+    </Card>
     <section className="hero panel">
       <div><p className="eyebrow">Today’s Focus</p><h2>One screen. One purpose.</h2><p>Know what matters, keep your vows, and move the needle forward.</p></div>
       <MomentumCard momentum={momentum} />
