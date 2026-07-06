@@ -459,7 +459,7 @@ function evaluateMomentum(log) {
     Boolean(log.wisdom.selfImprovement),
   ];
   const wellnessParts = [Boolean(log.wellness.workoutStatus), Boolean(log.wellness.bevelRecovery || log.wellness.bevelSleep || log.wellness.bevelStrain || log.wellness.bevelStress)];
-  const wealthParts = [Number(log.wealth.reachOutsCount || 0) > 0, Number(log.wealth.samples || 0) > 0 || Number(log.wealth.sixW || 0) > 0];
+  const wealthParts = [Number(log.wealth.reachOutsCount || 0) > 0 || Number(log.wealth.samples || 0) > 0 || Number(log.wealth.sixW || 0) > 0];
   const magicParts = [Boolean(log.magic.practiced || log.magic.trick || log.magic.notes)];
   const areas = [
     { label: "Wisdom", score: wisdomParts.filter(Boolean).length / wisdomParts.length },
@@ -941,7 +941,25 @@ function Metric({ label, value, pct }) { const width = Math.max(0, Math.min(100,
 function Empty({ text }) { return <div className="empty">{text}</div>; }
 function TextArea({ label, value, onChange }) { return <label>{label}<textarea value={value || ""} onChange={(e) => onChange(e.target.value)} /></label>; }
 function NumberField({ label, value, onChange }) { return <label>{label}<input className="input" type="number" value={value || ""} onChange={(e) => onChange(e.target.value)} /></label>; }
-function Counter({ label, value, onChange }) { return <div className="counter"><span>{label}</span><div><button className="btn" onClick={() => onChange(Number(value || 0) - 1)}>-</button><strong>{value}</strong><button className="btn" onClick={() => onChange(Number(value || 0) + 1)}>+</button></div></div>; }
+function Counter({ label, value, onChange }) {
+  return (
+    <div className="counter">
+      <span>{label}</span>
+      <input
+        className="input"
+        type="number"
+        min="0"
+        value={Number(value || 0)}
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value || 0)))}
+        style={{
+          width: "88px",
+          textAlign: "center",
+          fontWeight: 800,
+        }}
+      />
+    </div>
+  );
+}
 function Ratio({ label, value, target }) { return <Metric label={label} value={`${value}/${target}`} pct={Number(value || 0) / Number(target || 1)} />; }
 function EditableMoneyTable({ entries, updateEntry, deleteEntry }) { return <div className="money-table"><div className="money-row head"><span>Date</span><span>Type</span><span>Description</span><span>Amount</span><span></span></div>{entries.map((e) => <div className="money-row" key={e.id}><input className="input" type="date" value={e.date} onChange={(x) => updateEntry(e.id, { date: x.target.value })}/><select className="input" value={e.type} onChange={(x) => updateEntry(e.id, { type: x.target.value })}><option>Income</option><option>Expense</option></select><input className="input" value={e.description} onChange={(x) => updateEntry(e.id, { description: x.target.value })}/><input className="input" type="number" value={e.amount} onChange={(x) => updateEntry(e.id, { amount: Number(x.target.value || 0) })}/><button className="small-danger" onClick={() => deleteEntry(e.id)}>Delete</button></div>)}{entries.length === 0 && <Empty text="No income or expenses logged for this date yet."/>}</div>; }
 function humanize(key) { return key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).replace("Six W", "6-W"); }
