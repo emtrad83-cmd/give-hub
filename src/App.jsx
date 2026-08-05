@@ -7,6 +7,7 @@ import {
   Download,
   ExternalLink,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Sparkles,
@@ -88,6 +89,8 @@ const RELATIONSHIP_TYPES = [
   "Other",
 ];
 const OPPORTUNITY_STATUSES = ["Open", "Won", "Lost", "Paused", "Deferred"];
+const CORE_MOTIVATIONS = ["", "Caretaker", "Builder", "Connector", "Creator", "Professional", "Explorer", "Visionary"];
+const RELATIONSHIP_DEPTHS = ["", "New", "Developing", "Established", "Deep", "Inner Circle"];
 const CURRENT_TENSIONS = [
   "Energy / fatigue",
   "Sleep / recovery",
@@ -196,6 +199,7 @@ const blankLog = (date) => ({
   calendar: [],
   quickCapture: "",
   coachNotes: "",
+  guCheckIn: { responses: "", meetings: "", samples: "", newPeople: "", communityBuilders: "", leadership: "", anythingElse: "", shippedAt: "" },
 });
 
 function normalizeTricks(raw) {
@@ -228,6 +232,17 @@ function normalizePerson(p = {}) {
     trustNotes: p.trustNotes || "",
     timeline: Array.isArray(p.timeline) ? p.timeline : [],
     highLevelUrl: p.highLevelUrl || "",
+    highLevelContactId: p.highLevelContactId || "",
+    email: p.email || "",
+    phone: p.phone || "",
+    companyName: p.companyName || "",
+    contactSource: p.contactSource || "",
+    professionalRole: p.professionalRole || "",
+    coreMotivation: p.coreMotivation || "",
+    homeBuilding: p.homeBuilding || "",
+    relationshipDepth: p.relationshipDepth || "",
+    sourceSystem: p.sourceSystem || "give-hub",
+    lastHighLevelSync: p.lastHighLevelSync || "",
     created: p.created || todayISO(),
     updated: p.updated || todayISO(),
   };
@@ -259,6 +274,7 @@ function normalizeLog(raw, date) {
     magic: { ...base.magic, ...(log.magic || {}) },
     calendar: Array.isArray(log.calendar) ? log.calendar : [],
     quickCapture: log.quickCapture || "",
+    guCheckIn: { ...base.guCheckIn, ...(log.guCheckIn || {}) },
   };
 }
 function normalizeState(raw) {
@@ -481,6 +497,7 @@ export default function App() {
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [newPerson, setNewPerson] = useState({ name: "", type: "Prospect", stage: "Reach Out", currentTension: "Other", nextStep: "" });
   const [highLevelSyncStatus, setHighLevelSyncStatus] = useState({});
+  const [peopleImportStatus, setPeopleImportStatus] = useState({ state: "idle", message: "" });
 
   const log = normalizeLog(state.logs?.[date], date);
   const settings = state.settings || normalizeState().settings;
@@ -549,6 +566,41 @@ export default function App() {
         ...s,
         [person.id]: { state: "error", message: err.message },
       }));
+    }
+  };
+  const importPeopleFromHighLevel = async () => {
+    setPeopleImportStatus({ state: "syncing", message: "Reading contacts from HighLevel…" });
+    try {
+      const response = await fetch(`${GIVE_HUB_API_URL}/people`);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "HighLevel import failed.");
+      let added = 0;
+      let updated = 0;
+      setState((current) => {
+        const existing = (current.prospects || []).map(normalizePerson);
+        const merged = [...existing];
+        (result.people || []).forEach((remoteRaw) => {
+          const remote = normalizePerson(remoteRaw);
+          const index = merged.findIndex((local) =>
+            (remote.highLevelContactId && local.highLevelContactId === remote.highLevelContactId) ||
+            (remote.email && local.email && local.email.toLowerCase() === remote.email.toLowerCase()) ||
+            (remote.phone && local.phone && local.phone.replace(/\D/g, "") === remote.phone.replace(/\D/g, "")) ||
+            (remote.name && local.name.toLowerCase() === remote.name.toLowerCase())
+          );
+          if (index >= 0) {
+            const local = merged[index];
+            merged[index] = normalizePerson({ ...local, ...remote, id: local.id, timeline: local.timeline, coachObservation: local.coachObservation, trustNotes: local.trustNotes, goalConnections: local.goalConnections, notes: remote.notes || local.notes, nextStep: remote.nextStep || local.nextStep, currentMission: remote.currentMission || local.currentMission });
+            updated += 1;
+          } else {
+            merged.push(remote);
+            added += 1;
+          }
+        });
+        return { ...current, prospects: merged, updatedAt: new Date().toISOString() };
+      });
+      setPeopleImportStatus({ state: "synced", message: `${result.count} contacts checked · ${added} added · ${updated} updated` });
+    } catch (err) {
+      setPeopleImportStatus({ state: "error", message: err.message });
     }
   };
   const deletePerson = (id) => { setState((s) => ({ ...s, prospects: (s.prospects || []).filter((p) => p.id !== id) })); setSelectedPersonId(null); };
@@ -628,12 +680,12 @@ export default function App() {
         </div>
       </header>
       <main className="main-shell">
-        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
+        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people: relationshipList, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
         {tab === "wisdom" && <WisdomPage {...{ date, setDate, log, updateLogSection, manifestationPrompt, affirmations, goals, goalInsights }} />}
         {tab === "wellness" && <WellnessPage {...{ date, setDate, log, updateLogSection, allLogs }} />}
         {tab === "wealth" && <WealthPage {...{ date, setDate, log, stats, targets, setLog, updateLogSection, allLogs }} />}
         {tab === "magic" && <MagicPage {...{ log, updateLogSection, stats, tricks, updateSettings, magicCoach }} />}
-        {tab === "people" && <PeoplePage {...{ people: relationshipList, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel }} />}
+        {tab === "people" && <PeoplePage {...{ people: relationshipList, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel, peopleImportStatus, importPeopleFromHighLevel }} />}
         {tab === "settings" && <SettingsPage {...{ state, exportData, importData, settings, targets, goals, affirmations, manifestationPrompts, tricks, updateSettings }} />}
       </main>
       {selectedPerson && <PeopleDrawer person={{ ...selectedPerson, ...relationshipCoaching(selectedPerson, date) }} settings={settings} updatePerson={updatePerson} deletePerson={deletePerson} onClose={() => setSelectedPersonId(null)} highLevelSyncStatus={highLevelSyncStatus[selectedPerson.id]} syncPersonToHighLevel={syncPersonToHighLevel} />}
@@ -741,7 +793,7 @@ function buildExecutiveBrief({ date, momentum, log, targets, pipelineCounts, pri
   };
 }
 
-function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
+function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
   const coach = coachMessage(momentum, stats, missions, log, targets, priorityGoal, relationshipCoach, magicCoach);
   const perfectDay = perfectDayItems({ coachInsights, log, stats, targets, relationshipCoach, magicCoach });
   const calendar = log.calendar || [];
@@ -804,6 +856,12 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
     magicCoach,
     calendarEvents: combinedCalendar,
   });
+  const checkIn = log.guCheckIn || blankLog(date).guCheckIn;
+  const updateCheckIn = (key, value) => updateLogSection("guCheckIn", { ...checkIn, [key]: value });
+  const guFive = (people || []).filter((p) => p.opportunityStatus === "Open" && !["Not Interested", "Active GIVER"].includes(p.stage)).slice(0, 5);
+  const communityIdeas = ["local functional medicine practices", "school wellness leaders", "independent fitness studios", "community nonprofit directors", "local entrepreneur groups"];
+  const communityToResearch = communityIdeas[new Date(`${date}T12:00:00`).getDate() % communityIdeas.length];
+  const shipBrief = () => updateLogSection("guCheckIn", { ...checkIn, shippedAt: new Date().toISOString() });
 
   const addCalendar = () => updateLogSection("calendar", { calendar: [...calendar, { id: uid(), time: "", title: "", type: "Mission" }] });
   const updateCalendar = (id, updates) => updateLogSection("calendar", { calendar: calendar.map((e) => e.id === id ? { ...e, ...updates } : e) });
@@ -853,6 +911,25 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
           )) : <Empty text="Coach Evan needs more data for today. Log one action or update one relationship to generate priorities." />}
         </div>
       </div>
+    </Card>
+    <Card eyebrow="Daily GU Command Center" title="What changed since the last update?" action={checkIn.shippedAt ? <span className="status-pill success"><Check size={14}/> Brief shipped</span> : null}>
+      <p className="muted">Short notes are enough. Coach Evan combines these updates with the calendar, pipeline, goals, ratios, and relationship history.</p>
+      <div className="checkin-grid">
+        <TextArea label="Responses" value={checkIn.responses} onChange={(v) => updateCheckIn("responses", v)} placeholder="Who replied? What did they say?" />
+        <TextArea label="Meetings" value={checkIn.meetings} onChange={(v) => updateCheckIn("meetings", v)} placeholder="Scheduled, changed, or completed?" />
+        <TextArea label="Samples" value={checkIn.samples} onChange={(v) => updateCheckIn("samples", v)} placeholder="Delivered, GIVERwater, interactive samples, or venue leads?" />
+        <TextArea label="New People" value={checkIn.newPeople} onChange={(v) => updateCheckIn("newPeople", v)} placeholder="Anyone new in the pipeline?" />
+        <TextArea label="Community Builder Activity" value={checkIn.communityBuilders} onChange={(v) => updateCheckIn("communityBuilders", v)} placeholder="Updates from builder conversations?" />
+        <TextArea label="Leadership Pipeline" value={checkIn.leadership} onChange={(v) => updateCheckIn("leadership", v)} placeholder="Updates from GU family members?" />
+        <div className="checkin-wide"><TextArea label="Anything Else" value={checkIn.anythingElse} onChange={(v) => updateCheckIn("anythingElse", v)} placeholder="Anything important since the last update?" /></div>
+      </div>
+      <button className="btn primary ship-brief" onClick={shipBrief}><Sparkles size={16}/> Ship Today’s Brief</button>
+      {checkIn.shippedAt && <div className="command-output">
+        <div><span>Talking points</span><strong>{checkIn.responses || checkIn.meetings ? "Lead with the newest update, acknowledge what they shared, then ask one clear next-step question." : "No new response context logged. Keep outreach warm, curious, and relationship-first."}</strong></div>
+        <div><span>Follow-ups + waits</span><strong>{relationshipCoach?.name ? `${relationshipCoach.name}: ${relationshipCoach.nextStep || relationshipCoach.currentMission}. Keep everyone else in a clear wait or next-action state.` : "Update a person’s last contact and next step to build today’s follow-up list."}</strong></div>
+        <div className="command-wide"><span>Five new reach-outs</span><div className="command-people">{guFive.length ? guFive.map((p) => <button key={p.id} onClick={() => openPerson(p.id)}>{p.name}<small>{p.starter}</small></button>) : <small>Add or sync open pipeline contacts to generate the GU 5.</small>}</div></div>
+        <div><span>Community to research</span><strong>{communityToResearch}</strong></div>
+      </div>}
     </Card>
     <section className="hero panel">
       <div><p className="eyebrow">Today’s Focus</p><h2>One screen. One purpose.</h2><p>Know what matters, keep your vows, and move the needle forward.</p></div>
@@ -998,7 +1075,7 @@ function MagicPage({ log, updateLogSection, stats, tricks, updateSettings, magic
     <Card eyebrow="Coach Evan" title="Magic Training Coach"><div className={magicCoach?.days >= 7 ? "coach-alert" : "coach-soft"}><span className="coach-area">Magic</span><strong>{magicCoach?.nextTrick ? `Next: ${magicCoach.nextTrick.name}` : "Next focused practice"}</strong><span>{magicCoach?.message}</span><small>{magicCoach?.last ? `Last practice: ${compactDate(magicCoach.last)}` : "No logged practice yet"}</small></div><div className="coach-actions"><button className="btn" onClick={() => magicCoach?.nextTrick && set({ trick: magicCoach.nextTrick.name, practiced: true, minutes: m.minutes || 10 })}>Load suggested trick</button><button className="btn primary" onClick={() => set({ practiced: true, minutes: m.minutes || 10 })}>Mark practice started</button></div></Card>
     <Card eyebrow="Repertoire" title="Performance Readiness"><div className="mini-list"><div><span>Active repertoire</span><strong>{tricks.length}/{stats.targetRepertoireSize}</strong></div><div><span>Performance ready</span><strong>{stats.performanceReady}</strong></div><div><span>Practice days this week</span><strong>{stats.magicPracticeDays}</strong></div></div>{selected && <div className="manager-card"><strong>{selected.name}</strong><label>Status<select className="input" value={selected.status} onChange={(e) => updateTrick(selected.id, { status: e.target.value, performanceReady: e.target.value === "Performance Ready" })}>{MAGIC_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>}</Card></section></div>;
 }
-function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel }) {
+function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, peopleImportStatus, importPeopleFromHighLevel }) {
   const [query, setQuery] = useState(""); const [stage, setStage] = useState("All"); const [type, setType] = useState("All"); const [status, setStatus] = useState("All"); const [focus, setFocus] = useState("All");
   const filtered = people.filter((p) => {
     const hay = `${p.name} ${p.type} ${(p.relationshipTypes || []).join(" ")} ${p.stage} ${p.currentMission} ${p.currentTension} ${p.nextStep} ${p.tags} ${p.notes} ${p.coachObservation} ${p.goalConnections}`.toLowerCase();
@@ -1008,7 +1085,8 @@ function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, 
   const needsAttention = people.filter((p) => p.daysSinceContact >= 7 || p.daysSinceContact === 999).length;
   const averageHealth = people.length ? Math.round(people.reduce((t, p) => t + p.relationshipHealth, 0) / people.length) : 0;
   return <div className="page-grid">
-    <Card eyebrow="Relationship Intelligence" title="People are the operating system" action={<button className="btn primary" onClick={addPerson}><Plus size={16}/> Add Person</button>}>
+    <Card eyebrow="Relationship Intelligence" title="People are the operating system" action={<div className="people-actions"><button className="btn" disabled={peopleImportStatus.state === "syncing"} onClick={importPeopleFromHighLevel}><RefreshCw size={16} className={peopleImportStatus.state === "syncing" ? "spin" : ""}/> {peopleImportStatus.state === "syncing" ? "Syncing…" : "Sync HighLevel"}</button><button className="btn primary" onClick={addPerson}><Plus size={16}/> Add Person</button></div>}>
+      {peopleImportStatus.message && <div className={`sync-banner ${peopleImportStatus.state}`}>{peopleImportStatus.message}</div>}
       <div className="relationship-hero-grid">
         <div className="relationship-score-tile"><span>Relationship Health</span><strong>{averageHealth}%</strong><small>Average across active people</small></div>
         <div className="relationship-score-tile"><span>Needs Attention</span><strong>{needsAttention}</strong><small>Stale or missing contact date</small></div>
@@ -1042,7 +1120,8 @@ function PeopleDrawer({ person, settings, updatePerson, deletePerson, onClose, h
         <strong>{syncMessage}</strong>
         {person.lastHighLevelSync && <small>Last Sync: {new Date(person.lastHighLevelSync).toLocaleString()}</small>}
       </div>
-      <label>Name<input className="input" value={person.name} onChange={(e) => set({ name: e.target.value })} /></label><div className="form-grid"><label>Type<select className="input" value={person.type} onChange={(e) => set({ type: e.target.value })}>{PEOPLE_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Opportunity Status<select className="input" value={person.opportunityStatus} onChange={(e) => set({ opportunityStatus: e.target.value })}>{OPPORTUNITY_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>
+      <label>Name<input className="input" value={person.name} onChange={(e) => set({ name: e.target.value })} /></label><div className="form-grid"><label>Email<input className="input" type="email" value={person.email} onChange={(e) => set({ email: e.target.value })} /></label><label>Phone<input className="input" type="tel" value={person.phone} onChange={(e) => set({ phone: e.target.value })} /></label><label>Type<select className="input" value={person.type} onChange={(e) => set({ type: e.target.value })}>{PEOPLE_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Opportunity Status<select className="input" value={person.opportunityStatus} onChange={(e) => set({ opportunityStatus: e.target.value })}>{OPPORTUNITY_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>
+    <div className="form-grid"><label>Company<input className="input" value={person.companyName} onChange={(e) => set({ companyName: e.target.value })} /></label><label>Contact Source<input className="input" value={person.contactSource} onChange={(e) => set({ contactSource: e.target.value })} /></label><label>Professional Role<input className="input" value={person.professionalRole} onChange={(e) => set({ professionalRole: e.target.value })} /></label><label>Home Building<input className="input" value={person.homeBuilding} onChange={(e) => set({ homeBuilding: e.target.value })} /></label><label>Core Motivation<select className="input" value={person.coreMotivation} onChange={(e) => set({ coreMotivation: e.target.value })}>{CORE_MOTIVATIONS.map((x) => <option key={x} value={x}>{x || "Not set"}</option>)}</select></label><label>Relationship Depth<select className="input" value={person.relationshipDepth} onChange={(e) => set({ relationshipDepth: e.target.value })}>{RELATIONSHIP_DEPTHS.map((x) => <option key={x} value={x}>{x || "Not set"}</option>)}</select></label></div>
     <label>Relationship Categories</label><div className="relationship-chip-grid">{RELATIONSHIP_TYPES.map((type) => <button type="button" className={toList(person.relationshipTypes).includes(type) ? "chip active" : "chip"} key={type} onClick={() => toggleRelationshipType(type)}>{type}</button>)}</div>
     <label>Stage<select className="input" value={person.stage} onChange={(e) => set({ stage: e.target.value, currentMission: stageMission(e.target.value) })}>{SERVICE_STAGES.map((x) => <option key={x}>{x}</option>)}</select></label><label>Current Mission<input className="input" value={person.currentMission} onChange={(e) => set({ currentMission: e.target.value })} /></label><label>Current Tension<select className="input" value={person.currentTension} onChange={(e) => set({ currentTension: e.target.value })}>{tensions.map((x) => <option key={x}>{x}</option>)}</select></label><label>Last Contact<input className="input" type="date" value={person.lastContact || ""} onChange={(e) => set({ lastContact: e.target.value })} /></label><label>Next Step<input className="input" value={person.nextStep} onChange={(e) => set({ nextStep: e.target.value })} /></label><label>Goal Connections<input className="input" value={person.goalConnections} onChange={(e) => set({ goalConnections: e.target.value })} placeholder="Prosperity, Wealth, Magic…" /></label><label>Tags<input className="input" value={person.tags} onChange={(e) => set({ tags: e.target.value })} /></label><label>HighLevel URL<input className="input" value={person.highLevelUrl} onChange={(e) => set({ highLevelUrl: e.target.value })} /></label><TextArea label="Coach Observation" value={person.coachObservation} onChange={(v) => set({ coachObservation: v })} /><TextArea label="Trust Notes" value={person.trustNotes} onChange={(v) => set({ trustNotes: v })} /><TextArea label="Notes" value={person.notes} onChange={(v) => set({ notes: v })} />
     <Card eyebrow="Timeline" title="Relationship History" action={<button className="btn" onClick={addTimeline}>Add note</button>}><div className="timeline-list">{(person.timeline || []).length === 0 && <Empty text="No timeline notes yet. Add the moments that matter."/>}{(person.timeline || []).map((item) => <div className="timeline-item" key={item.id}><input className="input" type="date" value={item.date} onChange={(e) => updateTimeline(item.id, { date: e.target.value })}/><input className="input" value={item.text} onChange={(e) => updateTimeline(item.id, { text: e.target.value })}/><button className="small-danger" onClick={() => deleteTimeline(item.id)}>Delete</button></div>)}</div></Card>
