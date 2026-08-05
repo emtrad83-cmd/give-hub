@@ -794,11 +794,10 @@ function buildExecutiveBrief({ date, momentum, log, targets, pipelineCounts, pri
 }
 
 function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
-  const coach = coachMessage(momentum, stats, missions, log, targets, priorityGoal, relationshipCoach, magicCoach);
-  const perfectDay = perfectDayItems({ coachInsights, log, stats, targets, relationshipCoach, magicCoach });
   const calendar = log.calendar || [];
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState("loading");
+  const [calendarError, setCalendarError] = useState("");
 
     useEffect(() => {
       let mounted = true;
@@ -806,6 +805,7 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
       async function loadCalendar() {
         try {
           setCalendarStatus("loading");
+          setCalendarError("");
           const response = await fetch(`${GIVE_HUB_API_URL}/calendar/day?date=${date}`);
           const result = await response.json();
 
@@ -822,6 +822,7 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
           if (mounted) {
             setGoogleCalendarEvents([]);
             setCalendarStatus("error");
+            setCalendarError(err.message || "Google Calendar could not load.");
           }
         }
       }
@@ -941,37 +942,12 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
       <Metric label="6-W" value={`${stats.sixWToday}/${targets.dailySixW}`} pct={stats.sixWToday / targets.dailySixW} />
       <Metric label="Workout Week" value={`${stats.workoutDaysWeek}/${targets.weeklyWorkoutDays}`} pct={stats.workoutDaysWeek / targets.weeklyWorkoutDays} />
     </section>
-    <section className="two-col">
-      <Card eyebrow="Coach Evan" title="Next best action">
-        <p className="coach-copy">{coach}</p>
-        <div className="coach-insight-list">
-          {coachInsights.map((item) => <div className={item.tone === "alert" ? "coach-alert coach-rich" : "coach-soft coach-rich"} key={`${item.area}-${item.title}`}>
-            <span className="coach-area">{item.area}</span>
-            <strong>{item.title}</strong>
-            <span>{item.body}</span>
-            <small><b>Why:</b> {item.why}</small>
-            <small><b>Next:</b> {item.action}</small>
-            <div className="coach-meta"><em>{item.time}</em><em>{item.impact} impact</em>{item.goals?.length ? <em>{item.goals.join(" • ")}</em> : null}</div>
-          </div>)}
-        </div>
-        <div className="coach-actions"><button className="btn" onClick={() => setTab("wisdom")}>Goals</button><button className="btn" onClick={() => setTab("wealth")}>Ratios</button><button className="btn" onClick={() => setTab("people")}>People</button><button className="btn" onClick={() => setTab("magic")}>Magic</button></div>
-      </Card>
-      <Card eyebrow="Command Center" title="Today’s Missions" action={<button className="btn primary" onClick={() => setTab("people")}>Open People</button>}>
-        <div className="mission-list">{missions.length ? missions.map((m) => <button className="mission-card" key={m.id} onClick={() => openPerson(m.id)}><strong>{m.name}</strong><span>{m.mission}</span><small>{m.stage}</small></button>) : <Empty text="No active missions yet. Add people to your pipeline." />}</div>
-      </Card>
-    </section>
-    <Card eyebrow="Executive Assistant" title="If today went perfectly…">
-      <div className="perfect-day-list">
-        {perfectDay.map((item, idx) => <div className="perfect-day-item" key={item.id}><span>{idx + 1}</span><div><strong>{item.label}</strong><small>{item.detail}</small></div></div>)}
-        {!perfectDay.length && <Empty text="Today is already clean. Protect the evening and close the loop." />}
-      </div>
-    </Card>
     <section className="three-col">
       <Card eyebrow="Quick Capture" title="Park the thought"><textarea value={log.quickCapture || ""} onChange={(e) => updateLogSection("quickCapture", { quickCapture: e.target.value })} placeholder="Capture a thought, task, insight, or follow-up without leaving Home." /></Card>
       <Card eyebrow="Calendar" title="Today’s Calendar" action={<button className="btn" onClick={addCalendar}><Plus size={16}/> Add</button>}>
         <div className="calendar-list">
           {calendarStatus === "loading" && <Empty text={`Loading Google Calendar events for ${prettyDate(date, { weekday: undefined })}…`} />}
-          {calendarStatus === "error" && <Empty text="Google Calendar could not load. You can still add manual focus blocks here." />}
+          {calendarStatus === "error" && <div className="calendar-connect"><Empty text={calendarError || "Google Calendar could not load."} /><a className="btn primary" href={`${GIVE_HUB_API_URL}/auth/google/auth`} target="_blank" rel="noreferrer">Connect Google Calendar</a></div>}
           {calendarStatus !== "loading" && combinedCalendar.length ? combinedCalendar.map((item) => (
             item.source === "google" ?
               <div
@@ -1017,7 +993,7 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
                 <button className="small-danger" onClick={() => deleteCalendar(item.id)}>Delete</button>
               </div>
           )) : null}
-          {calendarStatus !== "loading" && !combinedCalendar.length && <Empty text="No calendar events for this date. Add a focus block if you want to structure the day." />}
+          {calendarStatus === "synced" && !combinedCalendar.length && <Empty text="No calendar events for this date. Add a focus block if you want to structure the day." />}
         </div>
       </Card>
       <Card eyebrow="Pipeline" title="People Snapshot"><div className="mini-list">{["Reach Out", "Share Sample", "GIVER IBO Candidate", "Active GIVER"].map((s) => <div key={s}><span>{s}</span><strong>{pipelineCounts[s] || 0}</strong></div>)}</div></Card>
