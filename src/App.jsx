@@ -869,6 +869,10 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
   const openPerson = (id) => { setSelectedPersonId(id); setTab("people"); };
   return <div className="page-grid">
     <DateBar date={date} setDate={setDate} />
+    <section className="hero panel">
+      <div><p className="eyebrow">Today’s Focus</p><h2>One screen. One purpose.</h2><p>Know what matters, keep your vows, and move the needle forward.</p></div>
+      <MomentumCard momentum={momentum} />
+    </section>
     <Card eyebrow="Coach Evan 2.0" title="Executive Brief">
       <div className="executive-brief">
         <div className="brief-hero">
@@ -931,10 +935,6 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
         <div><span>Community to research</span><strong>{communityToResearch}</strong></div>
       </div>}
     </Card>
-    <section className="hero panel">
-      <div><p className="eyebrow">Today’s Focus</p><h2>One screen. One purpose.</h2><p>Know what matters, keep your vows, and move the needle forward.</p></div>
-      <MomentumCard momentum={momentum} />
-    </section>
     <section className="dashboard-grid">
       <Metric label="Reach Outs" value={`${stats.reachOutsToday}/${targets.dailyReachOuts}`} pct={stats.reachOutsToday / targets.dailyReachOuts} />
       <Metric label="Samples" value={`${stats.samplesToday}/${targets.dailySamples}`} pct={stats.samplesToday / targets.dailySamples} />
