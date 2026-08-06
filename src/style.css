@@ -645,6 +645,12 @@ textarea { min-height: 116px; resize: vertical; line-height: 1.5; }
 .command-people button { text-align: left; border: 1px solid var(--line); background: white; border-radius: 10px; padding: 10px; color: var(--ink); font-weight: 850; cursor: pointer; }
 .command-people small { display: block; margin-top: 5px; color: var(--muted); font-weight: 600; line-height: 1.35; }
 .calendar-connect { display: grid; gap: 10px; justify-items: start; }
+.guidance-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.guidance-list article, .outreach-card { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.guidance-list article strong, .outreach-card strong { display: block; color: var(--navy-950); }
+.guidance-list article small, .outreach-card small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.4; }
+.guidance-list article p, .outreach-card p { margin: 8px 0 0; color: var(--ink-2); line-height: 1.45; }
+.pool-note { display: block; margin-top: 9px; color: var(--muted); line-height: 1.4; }
 
 @media (max-width: 720px) {
   .main-shell { padding: 14px 12px 90px; }
@@ -689,7 +695,7 @@ textarea { min-height: 116px; resize: vertical; line-height: 1.5; }
 /* Relationship Intelligence */
 .relationship-hero-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -1021,4 +1027,33 @@ textarea { min-height: 116px; resize: vertical; line-height: 1.5; }
   .brief-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 600px) {
+  .topbar { position: static; }
+  .topbar-inner { display: block; padding: calc(12px + env(safe-area-inset-top)) 12px 10px; }
+  .brand { margin-bottom: 6px; padding: 5px 9px; }
+  .topbar h1 { font-size: 27px; letter-spacing: -.045em; }
+  .topbar p { display: none; }
+  .save-status { margin-top: 7px; padding: 4px 8px; }
+  .nav-tabs { margin: 0; }
+  .main-shell { padding: 10px 10px calc(88px + env(safe-area-inset-bottom)); }
+  .page-grid { gap: 12px; }
+  .date-bar { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 5px; padding: 7px; border-radius: 16px; }
+  .date-bar > div { display: block; min-width: 0; }
+  .date-bar strong { display: none; }
+  .date-bar .input { min-width: 0; min-height: 38px; padding: 7px; }
+  .date-bar .btn { min-height: 38px; padding: 7px 8px; font-size: 12px; }
+  .hero { padding: 20px; gap: 16px; border-radius: 20px; }
+  .hero h2 { font-size: 29px; line-height: 1.02; }
+  .hero p { font-size: 14px; }
+  .momentum-card { padding: 16px; }
+  .card { padding: 15px; border-radius: 18px; }
+  .card h2, .card-head h2 { font-size: 20px; }
+  .brief-hero { padding: 14px; border-radius: 18px; }
+  .brief-hero h2 { font-size: 21px; }
+  .checkin-grid { gap: 10px; }
+  .checkin-grid textarea { min-height: 78px; }
+  .guidance-list { grid-template-columns: 1fr; }
+  .command-output > div { padding: 12px; }
 }

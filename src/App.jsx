@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { hasSupabaseConfig, supabase } from "./supabaseClient";
+import { OUTREACH_POOL } from "./outreachPool";
 import {
   Check,
   ChevronLeft,
@@ -199,7 +200,7 @@ const blankLog = (date) => ({
   calendar: [],
   quickCapture: "",
   coachNotes: "",
-  guCheckIn: { responses: "", meetings: "", samples: "", newPeople: "", communityBuilders: "", leadership: "", anythingElse: "", shippedAt: "" },
+  guCheckIn: { responses: "", meetings: "", samples: "", newPeople: "", communityBuilders: "", leadership: "", anythingElse: "", shippedAt: "", outreachIds: [] },
 });
 
 function normalizeTricks(raw) {
@@ -285,6 +286,7 @@ function normalizeState(raw) {
     updatedAt: safe.updatedAt || new Date().toISOString(),
     logs: safe.logs || {},
     prospects: (safe.prospects || safe.people || DEFAULT_PEOPLE).map(normalizePerson),
+    outreachPool: Array.isArray(safe.outreachPool) && safe.outreachPool.length ? safe.outreachPool : OUTREACH_POOL,
     settings: {
       targets: { ...DEFAULT_TARGETS, ...(settings.targets || {}) },
       goals: settings.goals || DEFAULT_GOALS,
@@ -507,6 +509,7 @@ export default function App() {
   const manifestationPrompts = settings.manifestationPrompts || DEFAULT_PROMPTS;
   const tricks = normalizeTricks(settings.tricks);
   const people = (state.prospects || []).map(normalizePerson);
+  const outreachPool = state.outreachPool || OUTREACH_POOL;
   const selectedPerson = people.find((p) => p.id === selectedPersonId) || null;
 
   const setLog = (updater) => {
@@ -604,6 +607,10 @@ export default function App() {
     }
   };
   const deletePerson = (id) => { setState((s) => ({ ...s, prospects: (s.prospects || []).filter((p) => p.id !== id) })); setSelectedPersonId(null); };
+  const markOutreachRecommended = (ids, recommendedDate) => setState((s) => ({
+    ...s,
+    outreachPool: (s.outreachPool || OUTREACH_POOL).map((person) => ids.includes(person.id) ? { ...person, lastRecommendedDate: recommendedDate } : person),
+  }));
 
   useEffect(() => {
     let mounted = true;
@@ -680,12 +687,12 @@ export default function App() {
         </div>
       </header>
       <main className="main-shell">
-        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people: relationshipList, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
+        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people: relationshipList, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
         {tab === "wisdom" && <WisdomPage {...{ date, setDate, log, updateLogSection, manifestationPrompt, affirmations, goals, goalInsights }} />}
         {tab === "wellness" && <WellnessPage {...{ date, setDate, log, updateLogSection, allLogs }} />}
         {tab === "wealth" && <WealthPage {...{ date, setDate, log, stats, targets, setLog, updateLogSection, allLogs }} />}
         {tab === "magic" && <MagicPage {...{ log, updateLogSection, stats, tricks, updateSettings, magicCoach }} />}
-        {tab === "people" && <PeoplePage {...{ people: relationshipList, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel, peopleImportStatus, importPeopleFromHighLevel }} />}
+        {tab === "people" && <PeoplePage {...{ people: relationshipList, outreachPool, selectedPerson, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, updatePerson, deletePerson, pipelineCounts, settings, date, highLevelSyncStatus, syncPersonToHighLevel, peopleImportStatus, importPeopleFromHighLevel }} />}
         {tab === "settings" && <SettingsPage {...{ state, exportData, importData, settings, targets, goals, affirmations, manifestationPrompts, tricks, updateSettings }} />}
       </main>
       {selectedPerson && <PeopleDrawer person={{ ...selectedPerson, ...relationshipCoaching(selectedPerson, date) }} settings={settings} updatePerson={updatePerson} deletePerson={deletePerson} onClose={() => setSelectedPersonId(null)} highLevelSyncStatus={highLevelSyncStatus[selectedPerson.id]} syncPersonToHighLevel={syncPersonToHighLevel} />}
@@ -793,7 +800,40 @@ function buildExecutiveBrief({ date, momentum, log, targets, pipelineCounts, pri
   };
 }
 
-function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
+function checkInUpdates(checkIn, people) {
+  const sections = [
+    ["Responses", checkIn.responses], ["Meetings", checkIn.meetings], ["Samples", checkIn.samples],
+    ["New People", checkIn.newPeople], ["Community Builders", checkIn.communityBuilders],
+    ["Leadership", checkIn.leadership], ["Other", checkIn.anythingElse],
+  ];
+  const knownNames = (people || []).map((p) => p.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  return sections.flatMap(([section, value]) => String(value || "").split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const matchedName = knownNames.find((name) => line.toLowerCase().includes(name.toLowerCase()));
+    const writtenName = line.match(/^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3})\s*[:–—-]/)?.[1];
+    const name = matchedName || writtenName || section;
+    const lower = line.toLowerCase();
+    let suggestion = "Acknowledge the update specifically, reflect one detail back, and ask one easy next-step question.";
+    if (/travel|trip|spain|portugal|vacation|family/.test(lower)) suggestion = "Acknowledge the travel or family context, then ask whether they are back in a normal rhythm now.";
+    else if (/website|site|link/.test(lower)) suggestion = "Answer their question directly, send the promised link, and invite their reaction without adding a sales pitch.";
+    else if (/product|kynetik|three international|uses|using/.test(lower)) suggestion = "Respect their existing product experience and ask what they value most about what they currently use.";
+    else if (/sample|giverwater|giver water|delivered|mailed/.test(lower)) suggestion = "Confirm delivery, make the instructions easy, and establish the exact date for the first experience check-in.";
+    else if (/meet|coffee|scheduled|appointment|call/.test(lower)) suggestion = "Confirm the time or outcome and leave the conversation with one dated next step.";
+    else if (/replied|said|asked|message/.test(lower)) suggestion = "Respond to what they actually shared first, then ask one curiosity-based follow-up question.";
+    return { section, name, update: line, suggestion };
+  }));
+}
+
+function selectOutreachFive(pool, activePeople, date) {
+  const activeNames = new Set((activePeople || []).map((p) => p.name.trim().toLowerCase()));
+  const eligible = (pool || []).filter((p) => p.stage === "Reach Out" && !p.alreadyContacted && p.recommendationStatus === "Ready for First Reach-Out" && !activeNames.has(p.name.trim().toLowerCase()));
+  const fresh = eligible.filter((p) => !p.lastRecommendedDate);
+  const candidates = fresh.length >= 5 ? fresh : eligible.sort((a, b) => String(a.lastRecommendedDate || "").localeCompare(String(b.lastRecommendedDate || "")));
+  if (!candidates.length) return [];
+  const seed = Number(date.replace(/-/g, "")) % candidates.length;
+  return [...candidates.slice(seed), ...candidates.slice(0, seed)].slice(0, 5);
+}
+
+function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
   const calendar = log.calendar || [];
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState("loading");
@@ -859,10 +899,16 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
   });
   const checkIn = log.guCheckIn || blankLog(date).guCheckIn;
   const updateCheckIn = (key, value) => updateLogSection("guCheckIn", { ...checkIn, [key]: value });
-  const guFive = (people || []).filter((p) => p.opportunityStatus === "Open" && !["Not Interested", "Active GIVER"].includes(p.stage)).slice(0, 5);
+  const savedOutreach = (checkIn.outreachIds || []).map((id) => (outreachPool || []).find((person) => person.id === id)).filter(Boolean);
+  const guFive = savedOutreach.length ? savedOutreach : selectOutreachFive(outreachPool, people, date);
+  const namedUpdates = checkInUpdates(checkIn, people);
+  const followUps = (people || []).filter((p) => p.opportunityStatus === "Open" && p.stage !== "Reach Out").slice(0, 6);
   const communityIdeas = ["local functional medicine practices", "school wellness leaders", "independent fitness studios", "community nonprofit directors", "local entrepreneur groups"];
   const communityToResearch = communityIdeas[new Date(`${date}T12:00:00`).getDate() % communityIdeas.length];
-  const shipBrief = () => updateLogSection("guCheckIn", { ...checkIn, shippedAt: new Date().toISOString() });
+  const shipBrief = () => {
+    updateLogSection("guCheckIn", { ...checkIn, shippedAt: new Date().toISOString(), outreachIds: guFive.map((person) => person.id) });
+    markOutreachRecommended(guFive.map((person) => person.id), date);
+  };
 
   const addCalendar = () => updateLogSection("calendar", { calendar: [...calendar, { id: uid(), time: "", title: "", type: "Mission" }] });
   const updateCalendar = (id, updates) => updateLogSection("calendar", { calendar: calendar.map((e) => e.id === id ? { ...e, ...updates } : e) });
@@ -930,9 +976,9 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
       </div>
       <button className="btn primary ship-brief" onClick={shipBrief}><Sparkles size={16}/> Ship Today’s Brief</button>
       {checkIn.shippedAt && <div className="command-output">
-        <div><span>Talking points</span><strong>{checkIn.responses || checkIn.meetings ? "Lead with the newest update, acknowledge what they shared, then ask one clear next-step question." : "No new response context logged. Keep outreach warm, curious, and relationship-first."}</strong></div>
-        <div><span>Follow-ups + waits</span><strong>{relationshipCoach?.name ? `${relationshipCoach.name}: ${relationshipCoach.nextStep || relationshipCoach.currentMission}. Keep everyone else in a clear wait or next-action state.` : "Update a person’s last contact and next step to build today’s follow-up list."}</strong></div>
-        <div className="command-wide"><span>Five new reach-outs</span><div className="command-people">{guFive.length ? guFive.map((p) => <button key={p.id} onClick={() => openPerson(p.id)}>{p.name}<small>{p.starter}</small></button>) : <small>Add or sync open pipeline contacts to generate the GU 5.</small>}</div></div>
+        <div className="command-wide"><span>Person-specific talking points</span><div className="guidance-list">{namedUpdates.length ? namedUpdates.map((item, index) => <article key={`${item.section}-${item.name}-${index}`}><strong>{item.name}</strong><small>{item.update}</small><p>{item.suggestion}</p></article>) : <small>Add response, meeting, or sample updates above to generate named talking points.</small>}</div></div>
+        <div className="command-wide"><span>Follow-ups + waits</span><div className="guidance-list">{followUps.length ? followUps.map((person) => <article key={person.id}><strong>{person.name} · {person.stage}</strong><small>{person.nextStep || person.currentMission || "Define the next mission."}</small><p>{/wait|pending|sent/i.test(`${person.nextStep} ${person.notes}`) ? "Waiting — do not create another touch unless the agreed follow-up date has arrived." : `${person.daysSinceContact === 999 ? "No contact date is recorded" : `${person.daysSinceContact} days since contact`}. Complete or date the next mission.`}</p></article>) : <small>No active pipeline follow-ups found.</small>}</div></div>
+        <div className="command-wide"><span>Five new reach-outs</span><div className="command-people">{guFive.length ? guFive.map((p) => <div className="outreach-card" key={p.id}><strong>{p.name}</strong><small>{p.professionalRole || p.contactSource}</small><p>{p.notes || "Warm entrepreneur-network connection ready for a first relationship-building message."}</p></div>) : <small>The outreach pool has completed its current rotation.</small>}</div><small className="pool-note">Selected only from the untouched outreach pool; active HighLevel contacts and previously contacted names are excluded.</small></div>
         <div><span>Community to research</span><strong>{communityToResearch}</strong></div>
       </div>}
     </Card>
@@ -1051,7 +1097,7 @@ function MagicPage({ log, updateLogSection, stats, tricks, updateSettings, magic
     <Card eyebrow="Coach Evan" title="Magic Training Coach"><div className={magicCoach?.days >= 7 ? "coach-alert" : "coach-soft"}><span className="coach-area">Magic</span><strong>{magicCoach?.nextTrick ? `Next: ${magicCoach.nextTrick.name}` : "Next focused practice"}</strong><span>{magicCoach?.message}</span><small>{magicCoach?.last ? `Last practice: ${compactDate(magicCoach.last)}` : "No logged practice yet"}</small></div><div className="coach-actions"><button className="btn" onClick={() => magicCoach?.nextTrick && set({ trick: magicCoach.nextTrick.name, practiced: true, minutes: m.minutes || 10 })}>Load suggested trick</button><button className="btn primary" onClick={() => set({ practiced: true, minutes: m.minutes || 10 })}>Mark practice started</button></div></Card>
     <Card eyebrow="Repertoire" title="Performance Readiness"><div className="mini-list"><div><span>Active repertoire</span><strong>{tricks.length}/{stats.targetRepertoireSize}</strong></div><div><span>Performance ready</span><strong>{stats.performanceReady}</strong></div><div><span>Practice days this week</span><strong>{stats.magicPracticeDays}</strong></div></div>{selected && <div className="manager-card"><strong>{selected.name}</strong><label>Status<select className="input" value={selected.status} onChange={(e) => updateTrick(selected.id, { status: e.target.value, performanceReady: e.target.value === "Performance Ready" })}>{MAGIC_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></label></div>}</Card></section></div>;
 }
-function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, peopleImportStatus, importPeopleFromHighLevel }) {
+function PeoplePage({ people, outreachPool, selectedPersonId, setSelectedPersonId, newPerson, setNewPerson, addPerson, peopleImportStatus, importPeopleFromHighLevel }) {
   const [query, setQuery] = useState(""); const [stage, setStage] = useState("All"); const [type, setType] = useState("All"); const [status, setStatus] = useState("All"); const [focus, setFocus] = useState("All");
   const filtered = people.filter((p) => {
     const hay = `${p.name} ${p.type} ${(p.relationshipTypes || []).join(" ")} ${p.stage} ${p.currentMission} ${p.currentTension} ${p.nextStep} ${p.tags} ${p.notes} ${p.coachObservation} ${p.goalConnections}`.toLowerCase();
@@ -1060,12 +1106,14 @@ function PeoplePage({ people, selectedPersonId, setSelectedPersonId, newPerson, 
   const highest = people[0];
   const needsAttention = people.filter((p) => p.daysSinceContact >= 7 || p.daysSinceContact === 999).length;
   const averageHealth = people.length ? Math.round(people.reduce((t, p) => t + p.relationshipHealth, 0) / people.length) : 0;
+  const outreachReady = (outreachPool || []).filter((p) => !p.alreadyContacted && p.recommendationStatus === "Ready for First Reach-Out").length;
   return <div className="page-grid">
     <Card eyebrow="Relationship Intelligence" title="People are the operating system" action={<div className="people-actions"><button className="btn" disabled={peopleImportStatus.state === "syncing"} onClick={importPeopleFromHighLevel}><RefreshCw size={16} className={peopleImportStatus.state === "syncing" ? "spin" : ""}/> {peopleImportStatus.state === "syncing" ? "Syncing…" : "Sync HighLevel"}</button><button className="btn primary" onClick={addPerson}><Plus size={16}/> Add Person</button></div>}>
       {peopleImportStatus.message && <div className={`sync-banner ${peopleImportStatus.state}`}>{peopleImportStatus.message}</div>}
       <div className="relationship-hero-grid">
         <div className="relationship-score-tile"><span>Relationship Health</span><strong>{averageHealth}%</strong><small>Average across active people</small></div>
         <div className="relationship-score-tile"><span>Needs Attention</span><strong>{needsAttention}</strong><small>Stale or missing contact date</small></div>
+        <div className="relationship-score-tile"><span>New Reach-Out Pool</span><strong>{outreachReady}</strong><small>Untouched names ready to rotate through the daily five</small></div>
         <div className="relationship-coach-tile"><span>Coach Evan</span><strong>{highest ? `Start with ${highest.name}` : "Add your first relationship"}</strong><small>{highest ? highest.reason : "Build your relationship intelligence layer."}</small></div>
       </div>
       <div className="add-person-grid relationship-add"><input className="input" placeholder="Name" value={newPerson.name} onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })} /><select className="input" value={newPerson.type} onChange={(e) => setNewPerson({ ...newPerson, type: e.target.value, relationshipTypes: [e.target.value] })}>{PEOPLE_TYPES.map((x) => <option key={x}>{x}</option>)}</select><select className="input" value={newPerson.stage} onChange={(e) => setNewPerson({ ...newPerson, stage: e.target.value, currentMission: stageMission(e.target.value) })}>{SERVICE_STAGES.map((x) => <option key={x}>{x}</option>)}</select><input className="input" placeholder="Next step" value={newPerson.nextStep} onChange={(e) => setNewPerson({ ...newPerson, nextStep: e.target.value })} /></div>
