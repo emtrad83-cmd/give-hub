@@ -200,7 +200,7 @@ const blankLog = (date) => ({
   calendar: [],
   quickCapture: "",
   coachNotes: "",
-  guCheckIn: { responses: "", meetings: "", samples: "", newPeople: "", communityBuilders: "", leadership: "", anythingElse: "", shippedAt: "", outreachIds: [] },
+  guCheckIn: { responses: "", meetings: "", samples: "", newPeople: "", communityBuilders: "", leadership: "", anythingElse: "", shippedAt: "", outreachIds: [], briefingPacket: "", packetSyncedAt: "", packetDocumentUrl: "", completedBrief: "", completedBriefSavedAt: "" },
 });
 
 function normalizeTricks(raw) {
@@ -687,7 +687,7 @@ export default function App() {
         </div>
       </header>
       <main className="main-shell">
-        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people: relationshipList, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
+        {tab === "home" && <HomePage {...{ date, setDate, momentum, missions, stats, log, allLogs, targets, pipelineCounts, people: relationshipList, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }} />}
         {tab === "wisdom" && <WisdomPage {...{ date, setDate, log, updateLogSection, manifestationPrompt, affirmations, goals, goalInsights }} />}
         {tab === "wellness" && <WellnessPage {...{ date, setDate, log, updateLogSection, allLogs }} />}
         {tab === "wealth" && <WealthPage {...{ date, setDate, log, stats, targets, setLog, updateLogSection, allLogs }} />}
@@ -833,11 +833,76 @@ function selectOutreachFive(pool, activePeople, date) {
   return [...candidates.slice(seed), ...candidates.slice(0, seed)].slice(0, 5);
 }
 
-function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipelineCounts, people, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
+function buildBriefingPacket({ date, checkIn, calendar, people, outreachFive, communityToResearch, momentum, stats, targets, priorityGoal, previousBrief }) {
+  const value = (text, fallback = "Nothing new reported.") => String(text || "").trim() || fallback;
+  const lines = (people || []).filter((person) => person.opportunityStatus === "Open").map((person) => {
+    const contact = person.daysSinceContact === 999 ? "no contact date recorded" : `${person.daysSinceContact} days since contact`;
+    return `- ${person.name} | ${person.stage} | ${contact} | Next: ${value(person.nextStep || person.currentMission, "Next action not yet defined.")} | Notes: ${value(person.notes, "None")}`;
+  });
+  const events = calendar.length ? calendar.map((event) => `- ${event.time || "All day"}: ${event.title}`).join("\n") : "- No calendar events found.";
+  const five = outreachFive.length ? outreachFive.map((person) => `- ${person.name} | ${value(person.professionalRole || person.contactSource, "Context not recorded")} | ${value(person.notes, "Untouched relationship-building prospect.")}`).join("\n") : "- Outreach pool rotation is currently complete.";
+
+  return `GIVE HUB EXECUTIVE BRIEFING PACKET
+Date: ${prettyDate(date)}
+
+INSTRUCTIONS FOR THE GIVE HUB EXECUTIVE BRIEF CHAT
+Create a detailed, person-specific Executive Advisor Daily Briefing from this packet. Use concrete details, draft warm responses where appropriate, distinguish act-now items from waits, and do not invent facts. Organize community opportunities as Active Opportunities, Developing Founder Relationships, Relationship Seeds, or Waiting. End with a prioritized action plan and an OPEN LOOPS section that can be pasted back into GIVE Hub.
+
+EXECUTIVE SNAPSHOT
+- Momentum: ${momentum.percent}%
+- Priority goal: ${priorityGoal?.name || "Not selected"}
+- Priority goal next action: ${value(priorityGoal?.nextAction, "Not defined")}
+- Reach outs: ${stats.reachOutsToday}/${targets.dailyReachOuts}
+- Samples: ${stats.samplesToday}/${targets.dailySamples}
+- 6-W conversations: ${stats.sixWToday}/${targets.dailySixW}
+- Workout days this week: ${stats.workoutDaysWeek}/${targets.weeklyWorkoutDays}
+
+TODAY'S CALENDAR
+${events}
+
+DAILY CHECK-IN
+Responses:
+${value(checkIn.responses)}
+
+Meetings:
+${value(checkIn.meetings)}
+
+Samples:
+${value(checkIn.samples)}
+
+New People:
+${value(checkIn.newPeople)}
+
+Community Builder Activity:
+${value(checkIn.communityBuilders)}
+
+Leadership Pipeline:
+${value(checkIn.leadership)}
+
+Anything Else:
+${value(checkIn.anythingElse)}
+
+ACTIVE PEOPLE AND PIPELINE
+${lines.length ? lines.join("\n") : "- No open pipeline records found."}
+
+FIVE NEW REACH-OUT CANDIDATES
+${five}
+
+COMMUNITY TO RESEARCH
+- ${communityToResearch}
+
+PREVIOUS BRIEF / OPEN LOOPS
+${value(previousBrief, "No prior completed brief has been saved yet.")}
+`;
+}
+
+function HomePage({ date, setDate, momentum, missions, stats, log, allLogs, targets, pipelineCounts, people, outreachPool, markOutreachRecommended, setTab, setSelectedPersonId, updateLogSection, priorityGoal, coachInsights, relationshipCoach, magicCoach }) {
   const calendar = log.calendar || [];
   const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState("loading");
   const [calendarError, setCalendarError] = useState("");
+  const [packetStatus, setPacketStatus] = useState("");
+  const [driveStatus, setDriveStatus] = useState("");
 
     useEffect(() => {
       let mounted = true;
@@ -905,9 +970,36 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
   const followUps = (people || []).filter((p) => p.opportunityStatus === "Open" && p.stage !== "Reach Out").slice(0, 6);
   const communityIdeas = ["local functional medicine practices", "school wellness leaders", "independent fitness studios", "community nonprofit directors", "local entrepreneur groups"];
   const communityToResearch = communityIdeas[new Date(`${date}T12:00:00`).getDate() % communityIdeas.length];
+  const previousBrief = [...(allLogs || [])].filter((item) => item.date < date && item.guCheckIn?.completedBrief).sort((a, b) => b.date.localeCompare(a.date))[0]?.guCheckIn?.completedBrief || "";
+  const briefingPacket = buildBriefingPacket({ date, checkIn, calendar: combinedCalendar, people, outreachFive: guFive, communityToResearch, momentum, stats, targets, priorityGoal, previousBrief });
   const shipBrief = () => {
-    updateLogSection("guCheckIn", { ...checkIn, shippedAt: new Date().toISOString(), outreachIds: guFive.map((person) => person.id) });
+    updateLogSection("guCheckIn", { ...checkIn, shippedAt: new Date().toISOString(), outreachIds: guFive.map((person) => person.id), briefingPacket });
     markOutreachRecommended(guFive.map((person) => person.id), date);
+  };
+  const copyBriefingPacket = async () => {
+    try {
+      await navigator.clipboard.writeText(briefingPacket);
+      updateLogSection("guCheckIn", { ...checkIn, briefingPacket });
+      setPacketStatus("Copied. Paste it into the GIVE Hub Executive Brief chat.");
+    } catch {
+      setPacketStatus("Copy was blocked by the browser. Select the packet text below and copy it manually.");
+    }
+  };
+  const syncBriefingPacket = async () => {
+    try {
+      setDriveStatus("Syncing…");
+      const response = await fetch(`${GIVE_HUB_API_URL}/briefing-packet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: briefingPacket }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw Object.assign(new Error(result.error || "Google Drive sync failed."), { reconnect: result.requiresGoogleAuthorization });
+      updateLogSection("guCheckIn", { ...checkIn, briefingPacket, packetSyncedAt: result.updatedAt, packetDocumentUrl: result.documentUrl });
+      setDriveStatus("Packet synced to your private Google Doc.");
+    } catch (error) {
+      setDriveStatus(error.reconnect ? "Reconnect Google once to approve the new document permission." : error.message);
+    }
+  };
+  const saveCompletedBrief = () => {
+    updateLogSection("guCheckIn", { ...checkIn, completedBriefSavedAt: new Date().toISOString() });
+    setPacketStatus("Completed brief saved. Its open loops will carry into the next packet.");
   };
 
   const addCalendar = () => updateLogSection("calendar", { calendar: [...calendar, { id: uid(), time: "", title: "", type: "Mission" }] });
@@ -981,6 +1073,29 @@ function HomePage({ date, setDate, momentum, missions, stats, log, targets, pipe
         <div className="command-wide"><span>Five new reach-outs</span><div className="command-people">{guFive.length ? guFive.map((p) => <div className="outreach-card" key={p.id}><strong>{p.name}</strong><small>{p.professionalRole || p.contactSource}</small><p>{p.notes || "Warm entrepreneur-network connection ready for a first relationship-building message."}</p></div>) : <small>The outreach pool has completed its current rotation.</small>}</div><small className="pool-note">Selected only from the untouched outreach pool; active HighLevel contacts and previously contacted names are excluded.</small></div>
         <div><span>Community to research</span><strong>{communityToResearch}</strong></div>
       </div>}
+      {checkIn.shippedAt && <section className="briefing-bridge">
+        <div>
+          <span className="eyebrow">GIVE Hub Executive Brief Chat</span>
+          <h3>Send the complete briefing packet</h3>
+          <p className="muted">Copy the packet into your dedicated chat for the detailed advisor response. Google Drive sync is optional and updates one private document created by GIVE Hub.</p>
+        </div>
+        <div className="bridge-actions">
+          <button className="btn primary" onClick={copyBriefingPacket}><Download size={16}/> Copy Briefing Packet</button>
+          <button className="btn" onClick={syncBriefingPacket}><RefreshCw size={16}/> Sync Google Doc</button>
+          {checkIn.packetDocumentUrl && <a className="btn" href={checkIn.packetDocumentUrl} target="_blank" rel="noreferrer"><ExternalLink size={16}/> Open Google Doc</a>}
+          {driveStatus.includes("Reconnect") && <a className="btn" href={`${GIVE_HUB_API_URL}/auth/google/auth`} target="_blank" rel="noreferrer">Reconnect Google</a>}
+        </div>
+        {(packetStatus || driveStatus) && <p className="bridge-status">{packetStatus || driveStatus}</p>}
+        <details>
+          <summary>Preview briefing packet</summary>
+          <textarea className="packet-preview" readOnly value={briefingPacket} aria-label="Briefing packet preview" />
+        </details>
+        <div className="completed-brief">
+          <label>Paste the completed brief back here</label>
+          <textarea value={checkIn.completedBrief || ""} onChange={(event) => updateCheckIn("completedBrief", event.target.value)} placeholder="Paste the completed GIVE Hub Executive Brief here so tomorrow's packet remembers the open loops." />
+          <button className="btn" disabled={!String(checkIn.completedBrief || "").trim()} onClick={saveCompletedBrief}><Save size={16}/> Save Completed Brief</button>
+        </div>
+      </section>}
     </Card>
     <section className="dashboard-grid">
       <Metric label="Reach Outs" value={`${stats.reachOutsToday}/${targets.dailyReachOuts}`} pct={stats.reachOutsToday / targets.dailyReachOuts} />
